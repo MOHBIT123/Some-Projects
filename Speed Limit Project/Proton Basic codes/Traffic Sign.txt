@@ -1,0 +1,260 @@
+Device=16F88
+XTAL 20    ' Set Xtal Frequency 
+
+ON_HARDWARE_INTERRUPT GoTo INT '''''in case of interrupt originate to int
+
+''''''''''''''''''''''''''''''''''''''''analog to digital converter intialisations'''''''''''''''''''
+ ADIN_RES 8                                                                                         '
+ Declare ADIN_TAD frc      ' RC OSC chosen                                                          '
+ Declare ADIN_STIME 50     ' Allow 50us sample time                                                 '
+ TRISA = %00010000         ' Configure AN4 (PORTA.4) as an input                                    '
+ 'ADCON1 = %00000000        ' we use in 16f88  ANSEL SFR instead to decide analog and digital pins  '
+ ANSEL = %00010000'set an4 as analog                                                                '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+ 
+''''''''''''''''''''''''''''''''''''''''''''''''''''''declare display''''''''''''''''''''''''''''''''
+                                                                                                    '
+Declare LCD_DTPIN PORTA.0                                                                           '
+Declare LCD_RSPIN PORTB.6                                                                           '
+Declare LCD_ENPIN PORTB.7                                                                           '
+                                                                                                    '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+                                                                                                    
+'''''''''''''''''''''''''''''''''''''''''SERIAL USART DECLERATIONS'''''''''''''''''''''''''''''''''''                                                                          
+                                                                                                    '
+Declare HSERIAL_BAUD = 9600                                                                         '
+RCSTA.7=1'ENABLES RC6 AS TX AND RC7 AS RX                                                           '
+TXSTA.5=1'ENABLES TRANSMISSION                                                                      '
+                                                                                                    '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''VARIABLES''''''''''''''''''''''''''''''''''''''
+                                                                                                    '
+Dim x      As Byte'used to contain the value of analog to digital conversion                        '
+Dim d      As Byte'used for duty cycle                                                              '
+Dim C      As Byte'used as counter to that contain 120 for timer 1                                  '
+Dim dataa  As Byte'used to contain the value of nibble to be send                                   '
+Dim frame  As Byte'used to contain the frame that we need to send                                   '
+                                                                                                    '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+'''''''''''''''''''''''''''''''''''''''''''''''''INTERRUPT CONFIGURATION''''''''''''''''''''''''''''''''''''''''
+                                                                                                               '
+'a) RB0 INTERRUPT CONFIGURATION                                                                                '
+                                                                                                               '
+Symbol INTF = INTCON.1      ' PORTB RBO Change Interrupt Flag                                                  '
+Symbol INTE = INTCON.4      ' PORTB INTERRUPT ON RB0                                                           '
+Symbol RBPU = OPTION_REG.7  ' PortB pull-ups                                                                   '
+Symbol INTEDG = OPTION_REG.6                                                                                   '
+Symbol GIE = INTCON.7       ' Global interrupt enable/disable                                                  '
+Symbol PIE = INTCON.6       ' PERIPHIRAL INTERRUPS ENABLE/DISABLE                                              '
+GIE = 1                     ' ENABLE ALL INTERRUPTS                                                            '
+RBPU =0                     ' ENABLE PORTB INTERNAL PULLUPS RESISTOR                                           '
+INTE =1                     ' ENABLE INTERRUPT ON PORTB                                                        '
+INTEDG=1                    ' EXCUTE INTERRUPT ON FALLING EDGE                                                 ' 
+                                                                                                               '
+'b) TMR1 CONFIGURATION                                                                                         '
+                                                                                                               '
+Symbol TMR1ON=T1CON.0      'timer one enable bit                                                               '
+Symbol T1PS0 =T1CON.4      'timer one prescalers bit                                                           '
+Symbol T1PS1 =T1CON.5                                                                                          '
+Symbol TM1IF = PIR1.0      'timer one interrupt flag bit                                                       '
+Symbol TM1IE =PIE1.0       'timer one interrupt inable bit                                                     '
+PIE=1                       'ENABLE PERIPHIRAL INTERRUPTS                                                      '
+TMR1ON=1                    'ENABLE TMR1                                                                       '
+TM1IE=1                     'ENABLE INTERRUPT ON TMR1                                                          '
+T1PS0=1                     'SET THE PS0 AND PS1 TO 1 1 MEANS 8 MAX PRESCALER FOR TMR1                         '
+T1PS1=1                                                                                                        '
+TM1IF=0                     'CLEAR TMR1IF                                                                      '
+C=120                       'contains c=cr+cy+cg=50+20+50=120  and timer 1 over flow on 0.1 s for fosc =20 MHz '
+                                                                                                               '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''' 
+                                                                                                         
+'''''''''''''''''''''''''''''''''''''''PORTS INTIALISATION'''''''''''''''''''''''''''''''''''''''''''''''''                                                                                      
+                                                                                                          '
+Input PORTA.0                                                                                             '
+                                                                                                          '
+Output PORTB.3 'yellow light                                                                              '
+                                                                                                          '
+Output PORTB.1 'red light                                                                                 '
+                                                                                                          '
+Output PORTB.4 'green light                                                                               '
+                                                                                                          ' 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+Sleep                       'ENTER SLEEP MODE AND WAIT FOR INTERRUPT ON RB0 THIS MODE ALSO CAN  REDUCE POWER CONSUMPTION
+
+Print Cls
+
+
+
+'''''''''''''''''''''''''''''''''''''''''''''main program''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+LOOP:
+
+
+If C=0 Then    'Means when timer finished
+
+PORTB.4=0
+
+PORTB.1=0
+
+PORTB.3=0
+
+C=120 
+
+Print Cls   
+
+Print At 1,1 ,"L= ",Dec x ,"   "
+
+d=((x*100)/255)
+
+Print At 1,13,"D:",BIN frame.7 
+
+Print At 2,1 ,"DU= ",Dec d," " 
+
+Print At 2,11 ,"T=:",Dec C," "
+
+Sleep
+
+EndIf
+
+GoTo LOOP
+
+INT:'''''''''''''''''''''''''''''''''''''''''''''interrupt section''''''''''''''''''''''
+                                                                                       '
+If TM1IF = 1 Then GoTo T1_INT                                                          '
+                                                                                       '
+If INTF =1    Then GoTo RB0_INT                                                        '
+                                                                                       '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+ 
+RB0_INT:
+
+Print Cls
+
+TMR1H=$0B'timer 100 ms with Fosc =20MHz
+
+TMR1L=$DC
+
+INTF=0
+
+Context Restore
+
+T1_INT:
+
+If C>70 Then 'from 120 to 70 for red cr=50 so Tred= 50*0.1 = 5s 
+
+PORTB.3=0
+
+PORTB.4=0
+
+PORTB.1=1 'turn on red light
+
+
+x=0   'red data
+
+d=((x*100)/255)
+
+dataa = d     
+
+GoSub AND15 ;data and %00001111
+
+frame =96'%01100000
+
+frame =frame+ dataa
+
+HRSOut frame
+ 
+dataa = d       
+
+GoSub AND240;data and %11110000
+
+dataa=dataa / 16  ;swap data from HIGHER nibble to LOWER
+
+frame =112'%01110000
+
+frame = frame  + dataa
+
+HRSOut frame
+
+ElseIf C<=70 And C>50 Then 'from 70 to 50 for yellow cy=20 so Ty= 20*0.1 = 2s
+
+PORTB.4=0
+
+PORTB.1=0
+
+PORTB.3=1'turn on yellow light
+
+ElseIf C>0 Then 'from 50 to 0 for green cg=50 so Tg= 50*0.1 = 5s
+
+PORTB.1=0
+
+PORTB.3=0
+
+PORTB.4=1 'turn on green light
+
+x = ADIn 4      'green data
+
+d=((x*100)/255)            
+
+dataa = d     
+
+GoSub AND15 ;data and %00001111
+
+frame =64'%01000000
+
+frame =frame+ dataa
+
+HRSOut frame
+ 
+dataa = d       
+
+GoSub AND240;data and %11110000
+
+dataa=dataa / 16  ;swap data from HIGHER nibble to LOWER
+
+frame =80'%01010000
+
+frame = frame  + dataa
+
+HRSOut frame
+
+EndIf
+
+Print At 1,1 ,"L= ",Dec x ,"   "
+
+d=((x*100)/255)
+
+Print At 1,13,"D: ",BIN frame.7 
+
+Print At 2,1 ,"DU = ",Dec d," " 
+
+Print At 2,11 ,"T=:",Dec C," "
+
+Dec C
+
+TMR1H=$0B'timer 100 ms with Fosc =20MHz and for 1.5 second timer 100ms * 15
+
+TMR1L=$DC
+
+TM1IF=0
+
+Context Restore
+
+AND15:  
+ClearBit  dataa,7
+ClearBit  dataa,6
+ClearBit  dataa,5
+ClearBit  dataa,4   
+Return 
+ 
+AND240: 
+ClearBit  dataa,0
+ClearBit  dataa,1
+ClearBit  dataa,2
+ClearBit  dataa,3 
+Return 
+
+End

@@ -1,0 +1,133 @@
+Device =16F88
+Declare XTAL 20
+ALL_DIGITAL TRUE
+
+ 
+''''''''''''''''''''''''''''''''''''''''''''''''''''''declare display''''''''''''''''''''''''''''''''
+                                                                                                    '
+Declare LCD_DTPIN PORTA.0                                                                           '
+Declare LCD_RSPIN PORTB.6                                                                           '
+Declare LCD_ENPIN PORTB.7                                                                           '
+                                                                                                    '
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+
+
+'SERIAL DECLERATIONS
+HSERIAL_CLEAR = On                           ' clear the buffer before receiving
+HSERIAL_BAUD = 9600        
+Symbol OERR = RCSTA.1  ' Overrun Error
+Symbol FERR = RCSTA.2  ' Framing Error
+Symbol CREN = RCSTA.4  ' Continuous Receive Enable
+Symbol SREN = RCSTA.5  ' Single Receive Enable
+Symbol SPEN = RCSTA.7  ' Serial Port Enable
+SPEN=1
+CREN=1
+
+'VARIABLES
+Dim x        As Byte'received data
+Dim address  As Byte
+Dim dataa    As Byte
+Dim state    As Byte
+Dim oldstate As Byte
+Dim S        As Byte
+Dim limit    As Byte
+Dim oldlimit As Byte
+Dim nibble0  As Byte
+Dim nibble1  As Byte
+Dim n0       As Bit
+Dim n1       As Bit
+
+
+'CLEARING PORTS AND REGISTERS 
+
+Print Cls
+
+'main program
+
+
+Loop:
+
+x = HRSin  'Receive a byte serially into x
+
+'If OERR =1 Or FERR =1 Then GoTo Loop
+
+address = x       ;ADDRESS and 240
+ClearBit  address,0
+ClearBit  address,1
+ClearBit  address,2
+ClearBit  address,3
+
+
+dataa = x         ;data and 15
+ClearBit  dataa,7
+ClearBit  dataa,6
+ClearBit  dataa,5
+ClearBit  dataa,4
+
+Select address
+
+Case 128   '10000000
+
+n0=1
+
+nibble0=dataa
+    
+Case 144   '10010000
+
+n1=1
+
+nibble1=dataa *16
+ 
+Case 160   '10100000 remote address
+
+state=x
+
+If state = 161 Then '10100001  Stop
+
+Print At 2,16 ,"S"
+
+S=0
+
+Print At 2,1,"DU:",Dec S ,"%  "
+
+ElseIf state=162 Then   '%10100010 forward
+
+Print At 2,16,"F"
+
+Print At 2,1,"DU:",Dec limit,"%  "
+
+ElseIf state=163 Then   '%10100011 backward
+
+Print At 2,16,"B"
+
+Print At 2,1,"DU:",Dec limit,"%  "
+
+EndIf
+
+Case Else
+
+GoTo Loop 'case not desired frame
+
+End Select
+
+If n0=1 And n1=1 Then
+
+n0=0
+
+n1=0
+
+limit =nibble0 + nibble1 
+
+oldlimit=limit
+
+Print At 1,1," L:" ,Dec limit,"%   "
+
+EndIf
+
+Print At 1,14,"D:",BIN x.7
+
+GoTo Loop
+
+End
+
